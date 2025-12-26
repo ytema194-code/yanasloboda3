@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ЯНА СЛОБОДА — Bear Forest (Real Photos)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<style>
+  html,body{height:100%;margin:0;background:#000;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
+  #container{position:fixed;inset:0}
+  canvas{display:block}
+
+  /* HUD */
+  #hud{position:absolute;left:12px;top:12px;color:#fff;z-index:120;user-select:none;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+  .line{margin-bottom:6px;font-size:15px;font-weight:bold;}
+  .hpbar{margin-top:6px;width:260px;height:18px;background:rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.2);}
+  .hpfill{height:100%;width:100%;background:linear-gradient(90deg,#4caf50,#d32f2f);transition:width .25s}
+  #invBox{position:absolute;right:12px;top:12px;width:260px;padding:10px;background:rgba(0,0,0,0.45);border-radius:8px;color:#fff;z-index:120}
+  #invBox h4{margin:0 0 8px 0;font-size:16px}
+  #inventoryList{font-size:13px;line-height:1.4;max-height:60vh;overflow:auto}
+
+  /* Overlays */
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:130;background:rgba(0,0,0,0.4);}
+  .panel{background:rgba(20,20,20,0.95);padding:24px;border-radius:12px;max-width:600px;color:#fff;box-shadow:0 10px 40px rgba(0,0,0,.9);text-align:center;border:1px solid #444;}
+  button.ui{padding:12px 20px;border-radius:6px;border:none;background:#e53935;color:#fff;cursor:pointer;margin:5px;font-size:16px;font-weight:bold;transition:0.2s;}
+  button.ui:hover{background:#ff5252;transform:scale(1.05);}
+  button.ghost{background:#444;}
+  button.ghost:hover{background:#666;}
+
+  #darkness{
+    position:fixed;inset:0;z-index:110;pointer-events:none;display:none;
+    background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 10%, rgba(0,0,0,0.98) 40%);
+    transition:opacity .16s;
+  }
+  .flashlight-on #darkness { display: block; }
+
+  #message{position:absolute;left:50%;bottom:80px;transform:translateX(-50%);z-index:140;color:#fff;background:rgba(0,0,0,0.7);padding:10px 20px;border-radius:8px;display:none;font-size:18px;}
+
+  .intox-1{filter: blur(1px) hue-rotate(-10deg);}
+  .intox-2{filter: blur(2px) hue-rotate(-20deg) contrast(1.2);}
+  .intox-3{filter: blur(3px) hue-rotate(-40deg) contrast(1.5);}
+
+  @media (max-width:600px){ #invBox{display:none} }
+
+  /* ===== MOBILE UI ===== */
+  #mobileControls{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:150;
+  }
+
+  #joystickBase{
+    position:absolute;
+    left:18px;
+    bottom:18px;
+    width:130px;
+    height:130px;
+    border-radius:50%;
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.25);
+    pointer-events:auto;
+  }
+
+  #joystickStick{
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:70px;
+    height:70px;
+    background:rgba(255,255,255,.25);
+    border-radius:50%;
+    transform:translate(-50%,-50%);
+  }
+
+  #buttonsRight{
+    position:absolute;
+    right:18px;
+    bottom:18px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    pointer-events:auto;
+  }
+
+  .mBtn{
+    width:80px;
+    height:80px;
+    border-radius:16px;
+    border:none;
+    background:rgba(0,0,0,.55);
+    color:#fff;
+    font-size:30px;
+  }
+
+  @media (min-width:800px){
+    #mobileControls{display:none;}
+  }
+</style>
+</head>
+
+<body>
+
+<div id="container"></div>
+
+<div id="hud">
+  <div class="line">ПОЙМАНЫ: <span id="caughtVal">0</span> / 5</div>
+  <div class="line">ЯГОДЫ: <span id="berriesVal">0</span> / 15</div>
+  <div class="hpbar"><div id="hpFill" class="hpfill"></div></div>
+  <div style="font-size:12px;margin-top:8px;opacity:0.8;">W/A/S/D — Ходить | SPACE — Прыжок | Shift — Бег | F — Фонарик</div>
+</div>
+
+<div id="invBox">
+  <h4>Инвентарь</h4>
+  <div id="inventoryList">Пусто</div>
+</div>
+
+<div id="darkness"></div>
+<div id="message"></div>
+
+<div id="menuOverlay" class="overlay">
+  <div class="panel">
+    <h1 style="color:#e53935; margin-bottom:10px;">BEAR FOREST STORY</h1>
+    <p style="margin-bottom:20px; font-size:14px; line-height:1.5;">
+      Ты — Медведь.<br>
+      Твоя цель: собрать 15 ягод.<br>
+      В лесу бродит <b>ЯНА</b>. Она хочет тебя поймать.<br>
+      Если она подходит близко — беги!
+    </p>
+    <div>
+      <button id="startBtn" class="ui">НАЧАТЬ ИГРУ</button>
+      <button id="continueBtn" class="ui ghost">ПРОДОЛЖИТЬ</button>
+    </div>
+    <div style="margin-top:10px;">
+        <button id="clearBtn" class="ui ghost" style="font-size:12px; padding:8px;">Сброс сохранения</button>
+    </div>
+  </div>
+</div>
+
+<div id="dialogOverlay" class="overlay" style="display:none">
+  <div class="panel">
+    <div id="dialogText" style="font-size:20px;min-height:60px;margin-bottom:20px;"></div>
+    <button id="dialogNext" class="ui">ДАЛЕЕ</button>
+  </div>
+</div>
+
+<div id="pauseOverlay" class="overlay" style="display:none">
+  <div class="panel">
+    <h2>ПАУЗА</h2>
+    <button id="resumeBtn" class="ui">ПРОДОЛЖИТЬ</button>
+    <button id="menuBtn" class="ui ghost">В МЕНЮ</button>
+  </div>
+</div>
+
+<div id="endOverlay" class="overlay" style="display:none">
+  <div class="panel">
+    <h2 id="endTitle" style="font-size:32px; margin-bottom:10px;">...</h2>
+    <p id="endMsg" style="font-size:18px; margin-bottom:20px;"></p>
+    <button id="restartBtn" class="ui">ИГРАТЬ ЗАНОВО</button>
+    <button id="endMenuBtn" class="ui ghost">В МЕНЮ</button>
+  </div>
+</div>
+
+<!-- MOBILE CONTROLS -->
+<div id="mobileControls">
+  <div id="joystickBase">
+      <div id="joystickStick"></div>
+  </div>
+
+  <div id="buttonsRight">
+      <button class="mBtn" id="btnJump">⭡</button>
+      <button class="mBtn" id="btnRun">🏃‍♂️</button>
+      <button class="mBtn" id="btnFlash">🔦</button>
+      <button class="mBtn" id="btnPause">⏸</button>
+  </div>
+</div>
+
+<script>
+const YANA_URL = 'yana.png';
+const BEAR_URL = 'bear.png';
+
+// --- ЗВУК ЯНЫ ---
+const yanaRoar = new Audio("yana_roar.ogg");   // имя файла — как у тебя!
+yanaRoar.volume = 0.9;
+
+function playYanaRoar(){
+    try{
+        yanaRoar.currentTime = 0;
+        yanaRoar.play();
+    } catch(e){}
+}
+
+const CONFIG = {
+    mapSize: 120,
+    numTrees: 150,
+    numBushes: 30,
+    berriesGoal: 15,
+    maxCatches: 5,
+    enemySpeed: 5.5,
+    playerSpeed: 8,
+    sprintMult: 1.8,
+    gravity: -35,
+    jumpForce: 12
+};
+
+let state = { mode: 'menu', hp: 100, berries: 0, inventory: [], caught: 0 };
+let clock, scene, camera, renderer;
+let player = null;
+let enemies = [];
+let berries = [];
+let keys = { w:false, a:false, s:false, d:false, space:false, shift:false };
+let velY = 0, canJump = true;
+let lastEnemySpawn = 0;
+let messageTimer = null;
+let audioCtx = null;
+
+let camDist = 12;
+let camPitch = 0.4;
+let camYaw = 0;
+
+function initThree() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050505);
+    scene.fog = new THREE.FogExp2(0x050505, 0.025);
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 500);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.getElementById('container').appendChild(renderer.domElement);
+
+    const amb = new THREE.AmbientLight(0x404040, 0.6);
+    scene.add(amb);
+
+    const dir = new THREE.DirectionalLight(0xffffff, 0.5);
+    dir.position.set(20, 50, 20);
+    dir.castShadow = true;
+    dir.shadow.mapSize.width = 2048;
+    dir.shadow.mapSize.height = 2048;
+    dir.shadow.camera.left = -50;
+    dir.shadow.camera.right = 50;
+    dir.shadow.camera.top = 50;
+    dir.shadow.camera.bottom = -50;
+    scene.add(dir);
+
+    const groundGeo = new THREE.PlaneGeometry(300, 300);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2b1a, roughness: 1 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    clock = new THREE.Clock();
+
+    window.textureLoader = new THREE.TextureLoader();
+    window.textureLoader.setCrossOrigin('anonymous');
+
+    window.addEventListener('resize', onResize);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+
+    let isDragging = false;
+    window.addEventListener('mousedown', (e) => { if(state.mode==='playing') isDragging=true; });
+    window.addEventListener('mouseup', () => isDragging=false);
+    window.addEventListener('mousemove', (e) => {
+        if(isDragging && state.mode==='playing') {
+            camYaw -= e.movementX * 0.005;
+            camPitch -= e.movementY * 0.005;
+            camPitch = Math.max(0.1, Math.min(Math.PI/2.5, camPitch));
+        }
+    });
+
+    window.addEventListener('wheel', (e) => {
+        camDist += e.deltaY * 0.01;
+        camDist = Math.max(5, Math.min(30, camDist));
+    });
+}
+
+function createSprite(url, height, fallbackColor) {
+    const spriteMat = new THREE.SpriteMaterial({ color: 0xffffff, map: null, transparent: true });
+
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.center.set(0.5, 0);
+    sprite.scale.set(height, height, 1);
+
+    window.textureLoader.load(url, (tex) => {
+        spriteMat.map = tex;
+        if (tex.image) {
+            const ratio = tex.image.width / tex.image.height;
+            sprite.scale.set(height * ratio, height, 1);
+        }
+        spriteMat.needsUpdate = true;
+    }, undefined, () => {
+        spriteMat.color.setHex(fallbackColor);
+        spriteMat.map = null;
+        sprite.scale.set(height * 0.6, height, 1);
+    });
+
+    return sprite;
+}
+
+function createPlayer() {
+    const s = createSprite(BEAR_URL, 3.0, 0x8b4513);
+    s.position.y = 0;
+    scene.add(s);
+    return { sprite: s };
+}
+
+function spawnEnemy() {
+    const s = createSprite(YANA_URL, 4.5, 0xff0000);
+    const angle = Math.random() * Math.PI * 2;
+    const dist = CONFIG.mapSize + 10;
+    s.position.set(Math.cos(angle)*dist, 0, Math.sin(angle)*dist);
+    scene.add(s);
+    enemies.push({ sprite: s, speed: CONFIG.enemySpeed * (0.8 + Math.random()*0.4), lastHit: 0 });
+}
+
+function createWorld() {
+    const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 3);
+    const trunkMat = new THREE.MeshStandardMaterial({color: 0x3d2817});
+    const leafGeo = new THREE.ConeGeometry(2, 5, 8);
+    const leafMat = new THREE.MeshStandardMaterial({color: 0x0f4f0f});
+
+    for(let i=0;i<CONFIG.numTrees;i++){
+        const g = new THREE.Group();
+        const t = new THREE.Mesh(trunkGeo,trunkMat);
+        t.position.y=1.5;
+        t.castShadow=true;
+
+        const l = new THREE.Mesh(leafGeo,leafMat);
+        l.position.y=4;
+        l.castShadow=true;
+
+        g.add(t); g.add(l);
+
+        const x = (Math.random()-0.5)*CONFIG.mapSize*1.8;
+        const z = (Math.random()-0.5)*CONFIG.mapSize*1.8;
+        g.position.set(x,0,z);
+        g.scale.multiplyScalar(0.8+Math.random()*0.5);
+        scene.add(g);
+    }
+
+    const bushGeo = new THREE.DodecahedronGeometry(1);
+    const bushMat = new THREE.MeshStandardMaterial({color: 0x228b22});
+    const berryGeo = new THREE.SphereGeometry(0.3);
+    const berryMat = new THREE.MeshStandardMaterial({color: 0xff0000, emissive: 0x550000});
+
+    for(let i=0;i<CONFIG.numBushes;i++){
+        const x=(Math.random()-0.5)*CONFIG.mapSize*1.6;
+        const z=(Math.random()-0.5)*CONFIG.mapSize*1.6;
+
+        const bush=new THREE.Mesh(bushGeo,bushMat);
+        bush.position.set(x,0.8,z);
+        bush.scale.set(1.5,1,1.5);
+        scene.add(bush);
+
+        const count=Math.ceil(Math.random()*2);
+        for(let j=0;j<count;j++){
+            const b=new THREE.Mesh(berryGeo,berryMat);
+            const bx=x+(Math.random()-0.5)*1.5;
+            const bz=z+(Math.random()-0.5)*1.5;
+            b.position.set(bx,0.5,bz);
+
+            const light=new THREE.PointLight(0xff0000,1,3);
+            b.add(light);
+
+            scene.add(b);
+            berries.push({mesh:b,id:Math.random().toString(36).substr(2,5)});
+        }
+    }
+}
+
+function update() {
+    const dt = Math.min(clock.getDelta(), 0.1);
+
+    if (state.mode === 'playing') {
+
+        let mx=0,mz=0;
+        if(keys.w)mz-=1;
+        if(keys.s)mz+=1;
+        if(keys.a)mx-=1;
+        if(keys.d)mx+=1;
+
+        const angle=Math.atan2(mx,mz);
+        const speedInput=Math.hypot(mx,mz);
+        let moveX=0,moveZ=0;
+
+        if(speedInput>0.1){
+            const moveAngle = angle + camYaw;
+            let currentSpeed=CONFIG.playerSpeed;
+            if(keys.shift) currentSpeed*=CONFIG.sprintMult;
+            currentSpeed*=Math.max(0.4,1-(state.caught*0.15));
+
+            moveX=Math.sin(moveAngle)*currentSpeed*dt;
+            moveZ=Math.cos(moveAngle)*currentSpeed*dt;
+        }
+
+        player.sprite.position.x+=moveX;
+        player.sprite.position.z+=moveZ;
+
+        if(keys.space && canJump){
+            velY=CONFIG.jumpForce;
+            canJump=false;
+        }
+        velY+=CONFIG.gravity*dt;
+        player.sprite.position.y+=velY*dt;
+
+        if(player.sprite.position.y<0){
+            player.sprite.position.y=0;
+            velY=0;
+            canJump=true;
+        }
+
+        const limit=CONFIG.mapSize;
+        player.sprite.position.x=Math.max(-limit,Math.min(limit,player.sprite.position.x));
+        player.sprite.position.z=Math.max(-limit,Math.min(limit,player.sprite.position.z));
+
+        const camX=player.sprite.position.x+Math.sin(camYaw)*Math.cos(camPitch)*camDist;
+        const camZ=player.sprite.position.z+Math.cos(camYaw)*Math.cos(camPitch)*camDist;
+        const camY=player.sprite.position.y+Math.sin(camPitch)*camDist+2;
+
+        camera.position.lerp(new THREE.Vector3(camX,camY,camZ),0.1);
+        camera.lookAt(player.sprite.position.clone().add(new THREE.Vector3(0,1.5,0)));
+
+        const now=Date.now();
+        if(now-lastEnemySpawn>4000 && enemies.length<5){
+            spawnEnemy();
+            lastEnemySpawn=now;
+        }
+
+        for(let i=enemies.length-1;i>=0;i--){
+            const e=enemies[i];
+            const dx=player.sprite.position.x-e.sprite.position.x;
+            const dz=player.sprite.position.z-e.sprite.position.z;
+            const dist=Math.hypot(dx,dz);
+
+            const dirX=dx/dist;
+            const dirZ=dz/dist;
+
+            e.sprite.position.x+=dirX*e.speed*dt;
+            e.sprite.position.z+=dirZ*e.speed*dt;
+
+            if(dist<2.0 && now-e.lastHit>1000){
+                takeDamage();
+                e.lastHit=now;
+            }
+        }
+
+        for(let i=berries.length-1;i>=0;i--){
+            const b=berries[i];
+            const dist=player.sprite.position.distanceTo(b.mesh.position);
+            if(dist<1.5) collectBerry(i);
+        }
+    }
+
+    renderer.render(scene,camera);
+    requestAnimationFrame(update);
+}
+
+function collectBerry(index){
+    const b=berries[index];
+    scene.remove(b.mesh);
+    berries.splice(index,1);
+
+    state.berries++;
+    state.inventory.push("Ягода "+b.id);
+    updateHUD();
+
+    if(state.berries>=CONFIG.berriesGoal) gameOver(true);
+    saveGame();
+}
+
+function takeDamage(){
+    playYanaRoar();   // <<< ОР ЯНЫ
+
+    state.hp-=15;
+    state.caught++;
+    state.inventory.push("Испуг (Яна)");
+    document.getElementById('container').className=`intox-${Math.min(3,state.caught)}`;
+    updateHUD();
+    if(state.hp<=0 || state.caught>=CONFIG.maxCatches) gameOver(false);
+    saveGame();
+}
+
+function gameOver(win){
+    state.mode=win?'win':'lose';
+    const overlay=document.getElementById('endOverlay');
+    overlay.style.display='flex';
+    const title=document.getElementById('endTitle');
+    const msg=document.getElementById('endMsg');
+
+    if(win){
+        title.textContent="ПОБЕДА!";
+        title.style.color="gold";
+        msg.textContent="Ты собрал ягоды и убежал от Яны!";
+    } else {
+        title.textContent="ТЫ ПОЙМАН";
+        title.style.color="darkred";
+        msg.textContent="Яна забрала твою душу.";
+    }
+    clearSave();
+}
+
+function resetGame(){
+    enemies.forEach(e=>scene.remove(e.sprite));
+    berries.forEach(b=>scene.remove(b.mesh));
+    enemies=[]; berries=[];
+
+    state={mode:'playing',hp:100,berries:0,inventory:[],caught:0};
+    document.getElementById('container').className='';
+
+    spawnEnemy();
+
+    const berryGeo=new THREE.SphereGeometry(0.3);
+    const berryMat=new THREE.MeshStandardMaterial({color:0xff0000,emissive:0x440000});
+    for(let i=0;i<CONFIG.berriesGoal+5;i++){
+        const b=new THREE.Mesh(berryGeo,berryMat);
+        const light=new THREE.PointLight(0xff0000,1,2);
+        b.add(light);
+        const x=(Math.random()-0.5)*CONFIG.mapSize*1.5;
+        const z=(Math.random()-0.5)*CONFIG.mapSize*1.5;
+        b.position.set(x,0.5,z);
+        scene.add(b);
+        berries.push({mesh:b,id:Math.random().toString(36).substr(2,4)});
+    }
+
+    player.sprite.position.set(0,0,0);
+    updateHUD();
+    clock.start();
+}
+
+function updateHUD(){
+    document.getElementById('caughtVal').innerText=state.caught;
+    document.getElementById('berriesVal').innerText=state.berries;
+    document.getElementById('hpFill').style.width=Math.max(0,state.hp)+'%';
+
+    const inv=document.getElementById('inventoryList');
+    if(state.inventory.length===0) inv.innerText="Пусто";
+    else inv.innerHTML=state.inventory.slice(-6).join('<br>')+(state.inventory.length>6?"...":"");
+}
+
+function showMessage(text,time){
+    const el=document.getElementById('message');
+    el.innerText=text;
+    el.style.display='block';
+    clearTimeout(messageTimer);
+    messageTimer=setTimeout(()=>el.style.display='none',time);
+}
+
+function onKeyDown(e){
+    if (e.code==='KeyW') keys.w=true;
+    if (e.code==='KeyS') keys.s=true;
+    if (e.code==='KeyA') keys.a=true;
+    if (e.code==='KeyD') keys.d=true;
+    if (e.code==='Space') keys.space=true;
+    if (e.code==='ShiftLeft') keys.shift=true;
+
+    if (e.code==='KeyF'){
+        document.body.classList.toggle('flashlight-on');
+    }
+    if(e.code==='Escape') togglePause();
+}
+
+function onKeyUp(e){
+    if (e.code==='KeyW') keys.w=false;
+    if (e.code==='KeyS') keys.s=false;
+    if (e.code==='KeyA') keys.a=false;
+    if (e.code==='KeyD') keys.d=false;
+    if (e.code==='Space') keys.space=false;
+    if (e.code==='ShiftLeft') keys.shift=false;
+}
+
+function togglePause(){
+    if(state.mode==='playing'){
+        state.mode='paused';
+        document.getElementById('pauseOverlay').style.display='flex';
+    } else if(state.mode==='paused'){
+        state.mode='playing';
+        document.getElementById('pauseOverlay').style.display='none';
+        clock.getDelta();
+    }
+}
+
+/* SAVE */
+function saveGame(){
+    localStorage.setItem('bearForestSaveV3',JSON.stringify({
+        hp:state.hp,berries:state.berries,caught:state.caught,inventory:state.inventory
+    }));
+}
+
+function loadGame(){
+    const raw=localStorage.getItem('bearForestSaveV3');
+    if(!raw) return false;
+    const d=JSON.parse(raw);
+    state.hp=d.hp; state.berries=d.berries; state.caught=d.caught; state.inventory=d.inventory;
+    updateHUD(); return true;
+}
+
+function clearSave(){ localStorage.removeItem('bearForestSaveV3'); }
+
+function onResize(){
+    camera.aspect=window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth,window.innerHeight);
+}
+
+/* ===== MOBILE CONTROLS ===== */
+
+let joyActive=false, joyStart={x:0,y:0};
+const base=document.getElementById('joystickBase');
+const stick=document.getElementById('joystickStick');
+
+function joyMove(x,y){
+    const dx=x-joyStart.x;
+    const dy=y-joyStart.y;
+    const dist=Math.min(50,Math.hypot(dx,dy));
+    const ang=Math.atan2(dy,dx);
+
+    stick.style.left=65+Math.cos(ang)*dist+"px";
+    stick.style.top =65+Math.sin(ang)*dist+"px";
+
+    keys.w = dy < -10;
+    keys.s = dy > 10;
+    keys.a = dx < -10;
+    keys.d = dx > 10;
+}
+
+base.addEventListener("touchstart", e=>{
+    const t=e.touches[0];
+    joyActive=true;
+    joyStart={x:t.clientX,y:t.clientY};
+    joyMove(t.clientX,t.clientY);
+});
+
+base.addEventListener("touchmove", e=>{
+    if(!joyActive) return;
+    const t=e.touches[0];
+    joyMove(t.clientX,t.clientY);
+});
+
+base.addEventListener("touchend", ()=>{
+    joyActive=false;
+    stick.style.left="50%";
+    stick.style.top ="50%";
+    keys.w=keys.a=keys.s=keys.d=false;
+});
+
+document.getElementById("btnJump").ontouchstart = ()=>{ keys.space=true; setTimeout(()=>keys.space=false,120); };
+document.getElementById("btnRun").ontouchstart  = ()=> keys.shift=true;
+document.getElementById("btnRun").ontouchend    = ()=> keys.shift=false;
+document.getElementById("btnFlash").ontouchstart= ()=> document.body.classList.toggle('flashlight-on');
+document.getElementById("btnPause").ontouchstart= ()=> togglePause();
+
+let camDrag=false,last={x:0,y:0};
+document.addEventListener("touchstart", e=>{
+    if(state.mode!=='playing') return;
+    camDrag=true;
+    last.x=e.touches[0].clientX;
+    last.y=e.touches[0].clientY;
+},{passive:true});
+
+document.addEventListener("touchmove", e=>{
+    if(!camDrag) return;
+    const t=e.touches[0];
+    camYaw  -= (t.clientX-last.x)*0.004;
+    camPitch-= (t.clientY-last.y)*0.004;
+    camPitch=Math.max(0.1,Math.min(Math.PI/2.5,camPitch));
+    last=t;
+},{passive:true});
+
+document.addEventListener("touchend", ()=> camDrag=false);
+
+/* UI buttons */
+document.getElementById('startBtn').onclick=()=>{
+    resetGame();
+    state.mode='dialog';
+    document.getElementById('menuOverlay').style.display='none';
+    document.getElementById('dialogOverlay').style.display='flex';
+    nextDialog(0);
+};
+
+document.getElementById('continueBtn').onclick=()=>{
+    if(loadGame()){
+        document.getElementById('menuOverlay').style.display='none';
+        state.mode='playing';
+        clock.start();
+    } else alert("Нет сохранения!");
+};
+
+document.getElementById('clearBtn').onclick=()=>{ clearSave(); alert("Сохранение удалено"); };
+document.getElementById('resumeBtn').onclick=togglePause;
+document.getElementById('menuBtn').onclick=()=>location.reload();
+document.getElementById('restartBtn').onclick=()=>location.reload();
+document.getElementById('endMenuBtn').onclick=()=>location.reload();
+
+const dialogs=[
+ "Медведь очнулся в лесу...",
+ "Он слышит странные звуки.",
+ "Это Яна. Она ищет кого-то...",
+ "Нужно собрать 15 ягод, чтобы набраться сил.",
+ "Используй фонарик (F).",
+ "УДАЧИ!"
+];
+let diagIdx=0;
+
+function nextDialog(i){
+    diagIdx=i;
+    if(diagIdx>=dialogs.length){
+        document.getElementById('dialogOverlay').style.display='none';
+        state.mode='playing';
+        return;
+    }
+    document.getElementById('dialogText').innerText=dialogs[diagIdx];
+}
+
+document.getElementById('dialogNext').onclick=()=>nextDialog(diagIdx+1);
+
+initThree();
+createWorld();
+player=createPlayer();
+update();
+</script>
+
+</body>
+</html>
